@@ -51,17 +51,29 @@ export async function addLoanRepayment(formData: FormData) {
 }
 
 export async function createCard(formData: FormData) {
-  const cardholderId = formData.get('cardholder_id') as string;
+  const cardholderName = formData.get('cardholder_name') as string;
   const cardName = formData.get('card_name') as string;
-  const brand = formData.get('brand') as string;
+  const initialBalance = parseFloat(formData.get('initial_balance') as string) || 0;
+  const brand = 'Mastercard'; // Defaulting for simplicity
 
-  if (!cardholderId || !cardName) return;
+  if (!cardholderName || !cardName) return;
 
   const supabase = createAdminClient();
+  
+  let cardholderId: string;
+  const { data: persons } = await supabase.from('cardholders').select('id').ilike('name', cardholderName).limit(1);
+  if (persons && persons.length > 0) {
+    cardholderId = persons[0].id;
+  } else {
+    const { data: newPerson } = await supabase.from('cardholders').insert({ name: cardholderName }).select().single();
+    if (!newPerson) return;
+    cardholderId = newPerson.id;
+  }
+
   await supabase.from('cards').insert({
     cardholder_id: cardholderId,
     card_name: cardName,
-    balance: 0,
+    balance: initialBalance,
     brand
   });
 
@@ -69,13 +81,24 @@ export async function createCard(formData: FormData) {
 }
 
 export async function issueLoan(formData: FormData) {
-  const cardholderId = formData.get('cardholder_id') as string;
+  const borrowerName = formData.get('borrower_name') as string;
   const amount = parseFloat(formData.get('amount') as string);
   const notes = formData.get('notes') as string;
 
-  if (!cardholderId || isNaN(amount)) return;
+  if (!borrowerName || isNaN(amount)) return;
 
   const supabase = createAdminClient();
+
+  let cardholderId: string;
+  const { data: persons } = await supabase.from('cardholders').select('id').ilike('name', borrowerName).limit(1);
+  if (persons && persons.length > 0) {
+    cardholderId = persons[0].id;
+  } else {
+    const { data: newPerson } = await supabase.from('cardholders').insert({ name: borrowerName }).select().single();
+    if (!newPerson) return;
+    cardholderId = newPerson.id;
+  }
+
   await supabase.from('loans').insert({
     cardholder_id: cardholderId,
     amount_loaned: amount,
