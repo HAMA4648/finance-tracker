@@ -4,6 +4,7 @@ import CardsOverview from '@/components/CardsOverview';
 import LoanTracker from '@/components/LoanTracker';
 import TransactionFeed from '@/components/TransactionFeed';
 import { revalidatePath } from 'next/cache';
+import { logoutAction } from '@/app/actions';
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -32,11 +33,18 @@ export default async function Dashboard() {
             <h1 className="text-3xl font-bold tracking-tight">Finance Dashboard</h1>
             <p className="text-slate-500 mt-1">Manage cards, transactions, and micro-loans</p>
           </div>
-          <form action={async () => { 'use server'; revalidatePath('/'); }}>
-             <button type="submit" className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
-               Refresh Data
-             </button>
-          </form>
+          <div className="flex items-center gap-3">
+            <form action={async () => { 'use server'; revalidatePath('/'); }}>
+              <button type="submit" className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
+                Refresh Data
+              </button>
+            </form>
+            <form action={logoutAction}>
+              <button type="submit" className="bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+                Log Out
+              </button>
+            </form>
+          </div>
         </header>
 
         <SummaryCards totalBalance={totalBalance} activeLoans={activeLoans} cardsCount={cardsCount} />

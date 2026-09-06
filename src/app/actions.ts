@@ -1,7 +1,35 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function loginAction(prevState: { error?: string } | undefined, formData: FormData) {
+  const password = formData.get('password') as string;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!password || password !== adminPassword) {
+    return { error: 'Invalid password. Please try again.' };
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set('admin_session', 'authenticated', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+    path: '/',
+    sameSite: 'lax',
+  });
+
+  redirect('/');
+}
+
+export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete('admin_session');
+  redirect('/login');
+}
 
 export async function addTransaction(formData: FormData) {
   const cardId = formData.get('card_id') as string;
