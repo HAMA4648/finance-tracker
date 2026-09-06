@@ -1,5 +1,6 @@
 import React from 'react';
 import { Transaction } from '@/types/database';
+import { formatCurrency } from '@/lib/format';
 
 export default function TransactionFeed({ transactions, cards }: { transactions: Transaction[], cards: any[] }) {
   return (
@@ -19,6 +20,7 @@ export default function TransactionFeed({ transactions, cards }: { transactions:
             {transactions.map(tx => {
               const card = cards.find(c => c.id === tx.card_id);
               const isExpense = tx.type === 'expense';
+              const currency = tx.currency || card?.currency || 'USD';
               return (
                 <tr key={tx.id} className="border-b border-slate-50/50 last:border-0 hover:bg-slate-50/50 transition-colors">
                   <td className="py-4 text-sm text-slate-500">
@@ -31,7 +33,7 @@ export default function TransactionFeed({ transactions, cards }: { transactions:
                     {tx.description || '-'}
                   </td>
                   <td className={`py-4 text-sm font-medium text-right ${isExpense ? 'text-red-600' : 'text-green-600'}`}>
-                    {isExpense ? '-' : '+'}${tx.amount.toFixed(2)}
+                    {isExpense ? '-' : '+'}{formatCurrency(tx.amount, currency)}
                   </td>
                 </tr>
               );

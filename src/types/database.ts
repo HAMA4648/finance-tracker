@@ -1,3 +1,5 @@
+export type CurrencyType = 'USD' | 'EUR' | 'IQD';
+
 export interface Cardholder {
   id: string;
   created_at: string;
@@ -12,6 +14,7 @@ export interface Card {
   cardholder_id: string;
   card_name: string;
   balance: number;
+  currency?: CurrencyType | string;
   last_four?: string;
   brand?: string | null;
 }
@@ -22,6 +25,7 @@ export interface Transaction {
   card_id: string;
   amount: number;
   type: string;
+  currency?: CurrencyType | string;
   description?: string | null;
   date?: string;
 }
@@ -32,6 +36,7 @@ export interface Loan {
   cardholder_id: string;
   amount_loaned: number;
   amount_repaid: number;
+  currency?: CurrencyType | string;
   notes?: string | null;
   status: string;
   date?: string;

@@ -21,8 +21,28 @@ export default async function Dashboard() {
   const safeTransactions = transactions || [];
   const safeCardholders = cardholders || [];
 
-  const totalBalance = safeCards.reduce((sum, card) => sum + (Number(card.balance) || 0), 0);
-  const activeLoans = safeLoans.filter(l => l.status === 'active').reduce((sum, loan) => sum + (Number(loan.amount_loaned) - Number(loan.amount_repaid)), 0);
+  const balancesByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  safeCards.forEach(card => {
+    const cur = (card.currency || 'USD').toUpperCase();
+    const bal = Number(card.balance) || 0;
+    if (cur in balancesByCurrency) {
+      balancesByCurrency[cur as keyof typeof balancesByCurrency] += bal;
+    } else {
+      balancesByCurrency.USD += bal;
+    }
+  });
+
+  const activeLoansByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  safeLoans.filter(l => l.status === 'active').forEach(loan => {
+    const cur = (loan.currency || 'USD').toUpperCase();
+    const remaining = (Number(loan.amount_loaned) || 0) - (Number(loan.amount_repaid) || 0);
+    if (cur in activeLoansByCurrency) {
+      activeLoansByCurrency[cur as keyof typeof activeLoansByCurrency] += remaining;
+    } else {
+      activeLoansByCurrency.USD += remaining;
+    }
+  });
+
   const cardsCount = safeCards.length;
 
   return (
@@ -47,7 +67,11 @@ export default async function Dashboard() {
           </div>
         </header>
 
-        <SummaryCards totalBalance={totalBalance} activeLoans={activeLoans} cardsCount={cardsCount} />
+        <SummaryCards
+          balancesByCurrency={balancesByCurrency}
+          activeLoansByCurrency={activeLoansByCurrency}
+          cardsCount={cardsCount}
+        />
 
         <CardsOverview cards={safeCards as any[]} cardholders={safeCardholders as any[]} />
 

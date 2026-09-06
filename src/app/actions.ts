@@ -6,23 +6,28 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function loginAction(prevState: { error?: string } | undefined, formData: FormData) {
-  const password = formData.get('password') as string;
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  try {
+    const password = formData.get('password') as string;
+    const adminPassword = process.env.ADMIN_PASSWORD;
 
-  if (!password || password !== adminPassword) {
-    return { error: 'Invalid password. Please try again.' };
+    if (!password || password !== adminPassword) {
+      return { error: 'Invalid password. Please try again.' };
+    }
+
+    const cookieStore = await cookies();
+    cookieStore.set('admin_session', 'authenticated', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: '/',
+      sameSite: 'lax',
+    });
+
+    redirect('/');
+  } catch (err: any) {
+    if (err?.digest?.startsWith('NEXT_REDIRECT')) throw err;
+    return { error: err.message || 'Login failed' };
   }
-
-  const cookieStore = await cookies();
-  cookieStore.set('admin_session', 'authenticated', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-    path: '/',
-    sameSite: 'lax',
-  });
-
-  redirect('/');
 }
 
 export async function logoutAction() {
@@ -32,108 +37,185 @@ export async function logoutAction() {
 }
 
 export async function addTransaction(formData: FormData) {
-  const cardId = formData.get('card_id') as string;
-  const amount = parseFloat(formData.get('amount') as string);
-  const type = formData.get('type') as string;
-  const description = formData.get('description') as string;
+  try {
+    const cardId = formData.get('card_id') as string;
+    const amount = parseFloat(formData.get('amount') as string);
+    const type = formData.get('type') as string;
+    const description = formData.get('description') as string;
 
-  if (!cardId || isNaN(amount) || !type) return;
+    if (!cardId || isNaN(amount) || !type) return { error: 'Invalid transaction inputs' };
 
-  const supabase = createAdminClient();
+    const supabase = createAdminClient();
 
-  const { data: card } = await supabase.from('cards').select('balance').eq('id', cardId).single();
-  if (!card) return;
+    const { data: card, error: fetchErr } = await supabase
+      .from('cards')
+      .select('balance, currency')
+      .eq('id', cardId)
+      .single();
 
-  const newBalance = type === 'expense' ? card.balance - amount : card.balance + amount;
+    if (fetchErr || !card) return { error: fetchErr?.message || 'Card not found' };
 
-  await supabase.from('cards').update({ balance: newBalance }).eq('id', cardId);
-  await supabase.from('transactions').insert({
-    card_id: cardId,
-    amount,
-    type,
-    description
-  });
+    const currentBalance = Number(card.balance) || 0;
+    const newBalance = type === 'expense' ? currentBalance - amount : currentBalance + amount;
 
-  revalidatePath('/');
+    const { error: updateErr } = await supabase
+      .from('cards')
+      .update({ balance: newBalance })
+      .eq('id', cardId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    const { error: insertErr } = await supabase.from('transactions').insert({
+      card_id: cardId,
+      amount,
+      type,
+      currency: card.currency || 'USD',
+      description
+    });
+
+    if (insertErr) return { error: insertErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Transaction failed' };
+  }
 }
 
 export async function addLoanRepayment(formData: FormData) {
-  const loanId = formData.get('loan_id') as string;
-  const amount = parseFloat(formData.get('amount') as string);
+  try {
+    const loanId = formData.get('loan_id') as string;
+    const amount = parseFloat(formData.get('amount') as string);
 
-  if (!loanId || isNaN(amount)) return;
+    if (!loanId || isNaN(amount)) return { error: 'Invalid repayment inputs' };
 
-  const supabase = createAdminClient();
-  const { data: loan } = await supabase.from('loans').select('*').eq('id', loanId).single();
-  if (!loan) return;
+    const supabase = createAdminClient();
+    const { data: loan, error: fetchErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('id', loanId)
+      .single();
 
-  const newRepaid = loan.amount_repaid + amount;
-  const newStatus = newRepaid >= loan.amount_loaned ? 'paid_off' : 'active';
+    if (fetchErr || !loan) return { error: fetchErr?.message || 'Loan not found' };
 
-  await supabase.from('loans').update({
-    amount_repaid: newRepaid,
-    status: newStatus
-  }).eq('id', loanId);
+    const newRepaid = (Number(loan.amount_repaid) || 0) + amount;
+    const newStatus = newRepaid >= Number(loan.amount_loaned) ? 'paid_off' : 'active';
 
-  revalidatePath('/');
+    const { error: updateErr } = await supabase
+      .from('loans')
+      .update({
+        amount_repaid: newRepaid,
+        status: newStatus
+      })
+      .eq('id', loanId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Loan repayment failed' };
+  }
 }
 
 export async function createCard(formData: FormData) {
-  const cardholderName = formData.get('cardholder_name') as string;
-  const cardName = formData.get('card_name') as string;
-  const initialBalance = parseFloat(formData.get('initial_balance') as string) || 0;
-  const brand = 'Mastercard'; // Defaulting for simplicity
+  try {
+    const cardholderName = formData.get('cardholder_name') as string;
+    const cardName = formData.get('card_name') as string;
+    const initialBalance = parseFloat(formData.get('initial_balance') as string) || 0;
+    const currency = (formData.get('currency') as string) || 'USD';
+    const brand = 'Mastercard';
 
-  if (!cardholderName || !cardName) return;
+    if (!cardholderName || !cardName) return { error: 'Cardholder name and Card name are required' };
 
-  const supabase = createAdminClient();
-  
-  let cardholderId: string;
-  const { data: persons } = await supabase.from('cardholders').select('id').ilike('name', cardholderName).limit(1);
-  if (persons && persons.length > 0) {
-    cardholderId = persons[0].id;
-  } else {
-    const { data: newPerson } = await supabase.from('cardholders').insert({ name: cardholderName }).select().single();
-    if (!newPerson) return;
-    cardholderId = newPerson.id;
+    const supabase = createAdminClient();
+    
+    let cardholderId: string;
+    const { data: persons, error: searchErr } = await supabase
+      .from('cardholders')
+      .select('id')
+      .ilike('name', cardholderName)
+      .limit(1);
+
+    if (searchErr) return { error: searchErr.message };
+
+    if (persons && persons.length > 0) {
+      cardholderId = persons[0].id;
+    } else {
+      const { data: newPerson, error: insertPersonErr } = await supabase
+        .from('cardholders')
+        .insert({ name: cardholderName })
+        .select()
+        .single();
+
+      if (insertPersonErr || !newPerson) return { error: insertPersonErr?.message || 'Failed to create cardholder' };
+      cardholderId = newPerson.id;
+    }
+
+    const { error: insertCardErr } = await supabase.from('cards').insert({
+      cardholder_id: cardholderId,
+      card_name: cardName,
+      balance: initialBalance,
+      currency,
+      brand
+    });
+
+    if (insertCardErr) return { error: insertCardErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to create card' };
   }
-
-  await supabase.from('cards').insert({
-    cardholder_id: cardholderId,
-    card_name: cardName,
-    balance: initialBalance,
-    brand
-  });
-
-  revalidatePath('/');
 }
 
 export async function issueLoan(formData: FormData) {
-  const borrowerName = formData.get('borrower_name') as string;
-  const amount = parseFloat(formData.get('amount') as string);
-  const notes = formData.get('notes') as string;
+  try {
+    const borrowerName = formData.get('borrower_name') as string;
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const notes = formData.get('notes') as string;
 
-  if (!borrowerName || isNaN(amount)) return;
+    if (!borrowerName || isNaN(amount)) return { error: 'Borrower name and Amount are required' };
 
-  const supabase = createAdminClient();
+    const supabase = createAdminClient();
 
-  let cardholderId: string;
-  const { data: persons } = await supabase.from('cardholders').select('id').ilike('name', borrowerName).limit(1);
-  if (persons && persons.length > 0) {
-    cardholderId = persons[0].id;
-  } else {
-    const { data: newPerson } = await supabase.from('cardholders').insert({ name: borrowerName }).select().single();
-    if (!newPerson) return;
-    cardholderId = newPerson.id;
+    let cardholderId: string;
+    const { data: persons, error: searchErr } = await supabase
+      .from('cardholders')
+      .select('id')
+      .ilike('name', borrowerName)
+      .limit(1);
+
+    if (searchErr) return { error: searchErr.message };
+
+    if (persons && persons.length > 0) {
+      cardholderId = persons[0].id;
+    } else {
+      const { data: newPerson, error: insertPersonErr } = await supabase
+        .from('cardholders')
+        .insert({ name: borrowerName })
+        .select()
+        .single();
+
+      if (insertPersonErr || !newPerson) return { error: insertPersonErr?.message || 'Failed to create cardholder' };
+      cardholderId = newPerson.id;
+    }
+
+    const { error: insertLoanErr } = await supabase.from('loans').insert({
+      cardholder_id: cardholderId,
+      amount_loaned: amount,
+      amount_repaid: 0,
+      currency,
+      status: 'active',
+      notes
+    });
+
+    if (insertLoanErr) return { error: insertLoanErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to issue loan' };
   }
-
-  await supabase.from('loans').insert({
-    cardholder_id: cardholderId,
-    amount_loaned: amount,
-    amount_repaid: 0,
-    status: 'active',
-    notes
-  });
-
-  revalidatePath('/');
 }
