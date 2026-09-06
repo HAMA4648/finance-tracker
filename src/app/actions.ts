@@ -49,11 +49,12 @@ export async function addTransaction(formData: FormData) {
 
     const { data: card, error: fetchErr } = await supabase
       .from('cards')
-      .select('balance, currency')
+      .select('balance, currency, is_active')
       .eq('id', cardId)
       .single();
 
     if (fetchErr || !card) return { error: fetchErr?.message || 'Card not found' };
+    if (card.is_active === false) return { error: 'Card is disabled and cannot process transactions' };
 
     const currentBalance = Number(card.balance) || 0;
     const newBalance = type === 'expense' ? currentBalance - amount : currentBalance + amount;
@@ -158,7 +159,8 @@ export async function createCard(formData: FormData) {
       card_name: cardName,
       balance: initialBalance,
       currency: currency,
-      brand: brand
+      brand: brand,
+      is_active: true
     });
 
     if (insertCardErr) return { error: insertCardErr.message };
@@ -167,6 +169,85 @@ export async function createCard(formData: FormData) {
     return { success: true };
   } catch (err: any) {
     return { error: err.message || 'Failed to create card' };
+  }
+}
+
+export async function updateCard(formData: FormData) {
+  try {
+    const cardId = formData.get('card_id') as string;
+    const cardName = (formData.get('card_name') as string)?.trim();
+    const cardholderName = (formData.get('cardholder_name') as string)?.trim();
+    const currency = (formData.get('currency') as string) || 'USD';
+    const brand = (formData.get('brand') as string)?.trim() || 'Mastercard';
+
+    if (!cardId || !cardName || !cardholderName) {
+      return { error: 'Card ID, Card name, and Cardholder name are required' };
+    }
+
+    const supabase = createAdminClient();
+
+    let cardholderId: string;
+    const { data: persons, error: searchErr } = await supabase
+      .from('cardholders')
+      .select('id')
+      .ilike('name', cardholderName)
+      .limit(1);
+
+    if (searchErr) return { error: searchErr.message };
+
+    if (persons && persons.length > 0) {
+      cardholderId = persons[0].id;
+    } else {
+      const { data: newPerson, error: insertPersonErr } = await supabase
+        .from('cardholders')
+        .insert({ name: cardholderName })
+        .select()
+        .single();
+
+      if (insertPersonErr || !newPerson) return { error: insertPersonErr?.message || 'Failed to create cardholder' };
+      cardholderId = newPerson.id;
+    }
+
+    const { error: updateErr } = await supabase
+      .from('cards')
+      .update({
+        card_name: cardName,
+        cardholder_id: cardholderId,
+        currency,
+        brand
+      })
+      .eq('id', cardId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update card' };
+  }
+}
+
+export async function toggleCardStatus(formData: FormData) {
+  try {
+    const cardId = formData.get('card_id') as string;
+    const currentStatus = formData.get('current_status') === 'true';
+
+    if (!cardId) return { error: 'Card ID is required' };
+
+    const supabase = createAdminClient();
+    const newStatus = !currentStatus;
+
+    const { error: updateErr } = await supabase
+      .from('cards')
+      .update({ is_active: newStatus })
+      .eq('id', cardId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to toggle card status' };
   }
 }
 

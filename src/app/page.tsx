@@ -43,7 +43,7 @@ export default async function Dashboard() {
     }
   });
 
-  const cardsCount = safeCards.length;
+  const cardsCount = safeCards.filter(c => c.is_active !== false).length;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-8">

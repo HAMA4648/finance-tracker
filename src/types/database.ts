@@ -17,6 +17,7 @@ export interface Card {
   currency?: CurrencyType | string;
   last_four?: string;
   brand?: string | null;
+  is_active?: boolean;
 }
 
 export interface Transaction {
