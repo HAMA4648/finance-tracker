@@ -120,11 +120,12 @@ export async function addLoanRepayment(formData: FormData) {
 
 export async function createCard(formData: FormData) {
   try {
-    const cardholderName = formData.get('cardholder_name') as string;
-    const cardName = formData.get('card_name') as string;
+    const cardholderName = (formData.get('cardholder_name') as string)?.trim();
+    const cardName = (formData.get('card_name') as string)?.trim();
     const initialBalance = parseFloat(formData.get('initial_balance') as string) || 0;
     const currency = (formData.get('currency') as string) || 'USD';
-    const brand = 'Mastercard';
+    const formBrand = (formData.get('brand') as string)?.trim();
+    const brand = formBrand || 'Mastercard';
 
     if (!cardholderName || !cardName) return { error: 'Cardholder name and Card name are required' };
 
@@ -156,8 +157,8 @@ export async function createCard(formData: FormData) {
       cardholder_id: cardholderId,
       card_name: cardName,
       balance: initialBalance,
-      currency,
-      brand
+      currency: currency,
+      brand: brand
     });
 
     if (insertCardErr) return { error: insertCardErr.message };
@@ -171,7 +172,7 @@ export async function createCard(formData: FormData) {
 
 export async function issueLoan(formData: FormData) {
   try {
-    const borrowerName = formData.get('borrower_name') as string;
+    const borrowerName = (formData.get('borrower_name') as string)?.trim();
     const amount = parseFloat(formData.get('amount') as string);
     const currency = (formData.get('currency') as string) || 'USD';
     const notes = formData.get('notes') as string;

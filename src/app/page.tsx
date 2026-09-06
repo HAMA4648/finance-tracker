@@ -3,7 +3,7 @@ import SummaryCards from '@/components/SummaryCards';
 import CardsOverview from '@/components/CardsOverview';
 import LoanTracker from '@/components/LoanTracker';
 import TransactionFeed from '@/components/TransactionFeed';
-import { revalidatePath } from 'next/cache';
+import RefreshButton from '@/components/RefreshButton';
 import { logoutAction } from '@/app/actions';
 
 export default async function Dashboard() {
@@ -54,13 +54,9 @@ export default async function Dashboard() {
             <p className="text-slate-500 mt-1">Manage cards, transactions, and micro-loans</p>
           </div>
           <div className="flex items-center gap-3">
-            <form action={async () => { 'use server'; revalidatePath('/'); }}>
-              <button type="submit" className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
-                Refresh Data
-              </button>
-            </form>
+            <RefreshButton />
             <form action={logoutAction}>
-              <button type="submit" className="bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+              <button type="submit" className="bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm cursor-pointer">
                 Log Out
               </button>
             </form>
