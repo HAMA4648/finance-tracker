@@ -43,6 +43,16 @@ export interface Loan {
   date?: string;
 }
 
+export interface Transfer {
+  id: string;
+  provider: 'moneygram' | 'western_union' | string;
+  amount: number;
+  currency: CurrencyType | string;
+  recipient_name?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -65,6 +75,11 @@ export interface Database {
         Row: Loan;
         Insert: Omit<Loan, 'id' | 'created_at'>;
         Update: Partial<Omit<Loan, 'id' | 'created_at'>>;
+      };
+      transfers: {
+        Row: Transfer;
+        Insert: Omit<Transfer, 'id' | 'created_at'>;
+        Update: Partial<Omit<Transfer, 'id' | 'created_at'>>;
       };
     };
     Views: Record<string, never>;

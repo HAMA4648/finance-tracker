@@ -1,0 +1,172 @@
+'use client'
+
+import React, { useState } from 'react';
+import SummaryCards from '@/components/SummaryCards';
+import CardsOverview from '@/components/CardsOverview';
+import LoanTracker from '@/components/LoanTracker';
+import TransactionFeed from '@/components/TransactionFeed';
+import TransferView from '@/components/TransferView';
+import RefreshButton from '@/components/RefreshButton';
+import { logoutAction } from '@/app/actions';
+import { Card, Cardholder, Loan, Transaction, Transfer } from '@/types/database';
+
+interface Props {
+  cards: Card[];
+  cardholders: Cardholder[];
+  loans: Loan[];
+  transactions: Transaction[];
+  transfers: Transfer[];
+}
+
+type TabType = 'home' | 'moneygram' | 'western_union' | 'cards' | 'loans';
+
+export default function DashboardTabs({ cards, cardholders, loans, transactions, transfers }: Props) {
+  const [activeTab, setActiveTab] = useState<TabType>('home');
+
+  const balancesByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  cards.forEach(card => {
+    const cur = (card.currency || 'USD').toUpperCase();
+    const bal = Number(card.balance) || 0;
+    if (cur in balancesByCurrency) {
+      balancesByCurrency[cur as keyof typeof balancesByCurrency] += bal;
+    } else {
+      balancesByCurrency.USD += bal;
+    }
+  });
+
+  const activeLoansByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  loans.filter(l => l.status === 'active').forEach(loan => {
+    const cur = (loan.currency || 'USD').toUpperCase();
+    const remaining = (Number(loan.amount_loaned) || 0) - (Number(loan.amount_repaid) || 0);
+    if (cur in activeLoansByCurrency) {
+      activeLoansByCurrency[cur as keyof typeof activeLoansByCurrency] += remaining;
+    } else {
+      activeLoansByCurrency.USD += remaining;
+    }
+  });
+
+  const moneygramByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  transfers.filter(t => (t.provider || '').toLowerCase() === 'moneygram').forEach(t => {
+    const cur = (t.currency || 'USD').toUpperCase();
+    const amt = Number(t.amount) || 0;
+    if (cur in moneygramByCurrency) {
+      moneygramByCurrency[cur as keyof typeof moneygramByCurrency] += amt;
+    } else {
+      moneygramByCurrency.USD += amt;
+    }
+  });
+
+  const westernUnionByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  transfers.filter(t => (t.provider || '').toLowerCase() === 'western_union').forEach(t => {
+    const cur = (t.currency || 'USD').toUpperCase();
+    const amt = Number(t.amount) || 0;
+    if (cur in westernUnionByCurrency) {
+      westernUnionByCurrency[cur as keyof typeof westernUnionByCurrency] += amt;
+    } else {
+      westernUnionByCurrency.USD += amt;
+    }
+  });
+
+  const cardsCount = cards.filter(c => c.is_active !== false).length;
+
+  const tabs: { id: TabType; label: string; icon: string }[] = [
+    { id: 'home', label: 'Home', icon: '🏠' },
+    { id: 'moneygram', label: 'Moneygram', icon: '💸' },
+    { id: 'western_union', label: 'Western Union', icon: '🌐' },
+    { id: 'cards', label: 'Cards', icon: '💳' },
+    { id: 'loans', label: 'Loans', icon: '🤝' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-8">
+      <div className="max-w-7xl mx-auto">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Finance Dashboard</h1>
+            <p className="text-slate-500 text-sm mt-1">Tailored for Mr. Marwan</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <RefreshButton />
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+              >
+                Log Out
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm mb-8 flex flex-wrap gap-1">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === tab.id
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'home' && (
+          <div className="space-y-8 animate-fadeIn">
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-8 rounded-3xl text-white shadow-xl relative overflow-hidden">
+              <div className="relative z-10">
+                <span className="text-xs font-semibold bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/30 mb-3 inline-block">
+                  Executive Dashboard
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+                  Welcome back, Dear Mr. Marwan
+                </h2>
+                <p className="text-indigo-200 text-sm mt-2 max-w-xl">
+                  Here is your real-time financial overview across all active cards, loans, Moneygram, and Western Union transfers.
+                </p>
+              </div>
+            </div>
+
+            <SummaryCards
+              balancesByCurrency={balancesByCurrency}
+              activeLoansByCurrency={activeLoansByCurrency}
+              moneygramByCurrency={moneygramByCurrency}
+              westernUnionByCurrency={westernUnionByCurrency}
+              cardsCount={cardsCount}
+            />
+
+            <TransactionFeed transactions={transactions} cards={cards} />
+          </div>
+        )}
+
+        {activeTab === 'moneygram' && (
+          <div className="animate-fadeIn">
+            <TransferView provider="moneygram" title="Moneygram" transfers={transfers} />
+          </div>
+        )}
+
+        {activeTab === 'western_union' && (
+          <div className="animate-fadeIn">
+            <TransferView provider="western_union" title="Western Union" transfers={transfers} />
+          </div>
+        )}
+
+        {activeTab === 'cards' && (
+          <div className="animate-fadeIn">
+            <CardsOverview cards={cards} cardholders={cardholders} />
+          </div>
+        )}
+
+        {activeTab === 'loans' && (
+          <div className="animate-fadeIn">
+            <LoanTracker loans={loans} cardholders={cardholders} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

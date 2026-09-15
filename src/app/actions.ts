@@ -301,3 +301,34 @@ export async function issueLoan(formData: FormData) {
     return { error: err.message || 'Failed to issue loan' };
   }
 }
+
+export async function addTransfer(formData: FormData) {
+  try {
+    const provider = (formData.get('provider') as string)?.trim().toLowerCase();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const recipientName = (formData.get('recipient_name') as string)?.trim() || null;
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!provider || isNaN(amount)) {
+      return { error: 'Provider and valid amount are required' };
+    }
+
+    const supabase = createAdminClient();
+
+    const { error: insertErr } = await supabase.from('transfers').insert({
+      provider,
+      amount,
+      currency,
+      recipient_name: recipientName,
+      notes
+    });
+
+    if (insertErr) return { error: insertErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to record transfer' };
+  }
+}
