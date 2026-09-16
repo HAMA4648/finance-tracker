@@ -83,6 +83,47 @@ export async function addTransaction(formData: FormData) {
   }
 }
 
+export async function deleteTransaction(formData: FormData) {
+  try {
+    const transactionId = formData.get('transaction_id') as string;
+    if (!transactionId) return { error: 'Transaction ID is required' };
+
+    const supabase = createAdminClient();
+
+    const { data: tx, error: fetchErr } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', transactionId)
+      .single();
+
+    if (fetchErr || !tx) return { error: fetchErr?.message || 'Transaction not found' };
+
+    if (tx.card_id) {
+      const { data: card } = await supabase
+        .from('cards')
+        .select('balance')
+        .eq('id', tx.card_id)
+        .single();
+
+      if (card) {
+        const currentBalance = Number(card.balance) || 0;
+        const txAmount = Number(tx.amount) || 0;
+        const adjustedBalance = tx.type === 'expense' ? currentBalance + txAmount : currentBalance - txAmount;
+
+        await supabase.from('cards').update({ balance: adjustedBalance }).eq('id', tx.card_id);
+      }
+    }
+
+    const { error: deleteErr } = await supabase.from('transactions').delete().eq('id', transactionId);
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete transaction' };
+  }
+}
+
 export async function addLoanRepayment(formData: FormData) {
   try {
     const loanId = formData.get('loan_id') as string;
@@ -227,6 +268,22 @@ export async function updateCard(formData: FormData) {
   }
 }
 
+export async function deleteCard(formData: FormData) {
+  try {
+    const cardId = formData.get('card_id') as string;
+    if (!cardId) return { error: 'Card ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase.from('cards').delete().eq('id', cardId);
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete card' };
+  }
+}
+
 export async function toggleCardStatus(formData: FormData) {
   try {
     const cardId = formData.get('card_id') as string;
@@ -302,6 +359,82 @@ export async function issueLoan(formData: FormData) {
   }
 }
 
+export async function updateLoan(formData: FormData) {
+  try {
+    const loanId = formData.get('loan_id') as string;
+    const borrowerName = (formData.get('borrower_name') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!loanId || !borrowerName || isNaN(amount)) {
+      return { error: 'Loan ID, Borrower name, and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+
+    let cardholderId: string;
+    const { data: persons, error: searchErr } = await supabase
+      .from('cardholders')
+      .select('id')
+      .ilike('name', borrowerName)
+      .limit(1);
+
+    if (searchErr) return { error: searchErr.message };
+
+    if (persons && persons.length > 0) {
+      cardholderId = persons[0].id;
+    } else {
+      const { data: newPerson, error: insertPersonErr } = await supabase
+        .from('cardholders')
+        .insert({ name: borrowerName })
+        .select()
+        .single();
+
+      if (insertPersonErr || !newPerson) return { error: insertPersonErr?.message || 'Failed to create cardholder' };
+      cardholderId = newPerson.id;
+    }
+
+    const { data: loan } = await supabase.from('loans').select('amount_repaid').eq('id', loanId).single();
+    const amountRepaid = Number(loan?.amount_repaid) || 0;
+    const newStatus = amountRepaid >= amount ? 'paid_off' : 'active';
+
+    const { error: updateErr } = await supabase
+      .from('loans')
+      .update({
+        cardholder_id: cardholderId,
+        amount_loaned: amount,
+        currency,
+        notes,
+        status: newStatus
+      })
+      .eq('id', loanId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update loan' };
+  }
+}
+
+export async function deleteLoan(formData: FormData) {
+  try {
+    const loanId = formData.get('loan_id') as string;
+    if (!loanId) return { error: 'Loan ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase.from('loans').delete().eq('id', loanId);
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete loan' };
+  }
+}
+
 export async function addTransfer(formData: FormData) {
   try {
     const provider = (formData.get('provider') as string)?.trim().toLowerCase();
@@ -330,5 +463,54 @@ export async function addTransfer(formData: FormData) {
     return { success: true };
   } catch (err: any) {
     return { error: err.message || 'Failed to record transfer' };
+  }
+}
+
+export async function updateTransfer(formData: FormData) {
+  try {
+    const transferId = formData.get('transfer_id') as string;
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const recipientName = (formData.get('recipient_name') as string)?.trim() || null;
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!transferId || isNaN(amount)) {
+      return { error: 'Transfer ID and valid amount are required' };
+    }
+
+    const supabase = createAdminClient();
+
+    const { error: updateErr } = await supabase
+      .from('transfers')
+      .update({
+        amount,
+        currency,
+        recipient_name: recipientName,
+        notes
+      })
+      .eq('id', transferId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update transfer' };
+  }
+}
+
+export async function deleteTransfer(formData: FormData) {
+  try {
+    const transferId = formData.get('transfer_id') as string;
+    if (!transferId) return { error: 'Transfer ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase.from('transfers').delete().eq('id', transferId);
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete transfer' };
   }
 }
