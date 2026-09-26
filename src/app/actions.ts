@@ -168,6 +168,8 @@ export async function createCard(formData: FormData) {
     const currency = (formData.get('currency') as string) || 'USD';
     const formBrand = (formData.get('brand') as string)?.trim();
     const brand = formBrand || 'Mastercard';
+    const maxTransfersRaw = formData.get('max_transfers') as string;
+    const maxTransfers = maxTransfersRaw && maxTransfersRaw !== '' ? parseInt(maxTransfersRaw, 10) : null;
 
     if (!cardholderName || !cardName) return { error: 'Cardholder name and Card name are required' };
 
@@ -201,7 +203,12 @@ export async function createCard(formData: FormData) {
       balance: initialBalance,
       currency: currency,
       brand: brand,
-      is_active: true
+      is_active: true,
+      ...(maxTransfers !== null ? {
+        max_transfers: maxTransfers,
+        transfers_used: 0,
+        last_reset_date: new Date().toISOString(),
+      } : {}),
     });
 
     if (insertCardErr) return { error: insertCardErr.message };
@@ -220,6 +227,8 @@ export async function updateCard(formData: FormData) {
     const cardholderName = (formData.get('cardholder_name') as string)?.trim();
     const currency = (formData.get('currency') as string) || 'USD';
     const brand = (formData.get('brand') as string)?.trim() || 'Mastercard';
+    const maxTransfersRaw = formData.get('max_transfers') as string;
+    const maxTransfers = maxTransfersRaw && maxTransfersRaw !== '' ? parseInt(maxTransfersRaw, 10) : null;
 
     if (!cardId || !cardName || !cardholderName) {
       return { error: 'Card ID, Card name, and Cardholder name are required' };
@@ -255,7 +264,8 @@ export async function updateCard(formData: FormData) {
         card_name: cardName,
         cardholder_id: cardholderId,
         currency,
-        brand
+        brand,
+        max_transfers: maxTransfers,
       })
       .eq('id', cardId);
 
@@ -305,6 +315,85 @@ export async function toggleCardStatus(formData: FormData) {
     return { success: true };
   } catch (err: any) {
     return { error: err.message || 'Failed to toggle card status' };
+  }
+}
+
+// ─── Transfer Counter Actions ─────────────────────────────────────────────────
+
+export async function tickCardTransfer(cardId: string): Promise<{ success?: boolean; transfers_used?: number; error?: string }> {
+  try {
+    if (!cardId) return { error: 'Card ID is required' };
+
+    const supabase = createAdminClient();
+
+    // Fetch current card state
+    const { data: card, error: fetchErr } = await supabase
+      .from('cards')
+      .select('max_transfers, transfers_used, last_reset_date')
+      .eq('id', cardId)
+      .single();
+
+    if (fetchErr || !card) return { error: fetchErr?.message || 'Card not found' };
+
+    const maxTransfers: number | null = card.max_transfers ?? null;
+    if (maxTransfers === null) return { error: 'This card has no transfer limit configured.' };
+
+    // Check if 30 days have passed since last reset
+    let transfersUsed: number = card.transfers_used ?? 0;
+    const lastReset: string | null = card.last_reset_date ?? null;
+    const now = new Date();
+
+    const shouldReset = !lastReset || (now.getTime() - new Date(lastReset).getTime()) >= 30 * 24 * 60 * 60 * 1000;
+    if (shouldReset) {
+      transfersUsed = 0;
+    }
+
+    // Check limit
+    if (transfersUsed >= maxTransfers) {
+      return { error: '30-day transfer limit reached. Cannot add more transfers until the cycle resets.' };
+    }
+
+    const newCount = transfersUsed + 1;
+
+    const updatePayload: Record<string, unknown> = { transfers_used: newCount };
+    if (shouldReset) {
+      updatePayload.last_reset_date = now.toISOString();
+    }
+
+    const { error: updateErr } = await supabase
+      .from('cards')
+      .update(updatePayload)
+      .eq('id', cardId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true, transfers_used: newCount };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to tick transfer counter' };
+  }
+}
+
+export async function resetCardCounter(cardId: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    if (!cardId) return { error: 'Card ID is required' };
+
+    const supabase = createAdminClient();
+
+    const { error: updateErr } = await supabase
+      .from('cards')
+      .update({
+        transfers_used: 0,
+        last_reset_date: new Date().toISOString(),
+      })
+      .eq('id', cardId);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to reset counter' };
   }
 }
 

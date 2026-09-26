@@ -1,14 +1,105 @@
 'use client'
 import React, { useState } from 'react';
-import { addTransaction, createCard, updateCard, deleteCard, toggleCardStatus } from '@/app/actions';
+import { addTransaction, createCard, updateCard, deleteCard, toggleCardStatus, tickCardTransfer, resetCardCounter } from '@/app/actions';
 import { formatCurrency } from '@/lib/format';
 
+// ─── Helper: days remaining in 30-day cycle ───────────────────────────────────
+function getDaysRemaining(lastResetDate: string | null | undefined): number | null {
+  if (!lastResetDate) return null;
+  const resetTime = new Date(lastResetDate).getTime();
+  const now = Date.now();
+  const elapsed = now - resetTime;
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+  const remaining = Math.max(0, Math.ceil((thirtyDays - elapsed) / (24 * 60 * 60 * 1000)));
+  return remaining;
+}
+
+// ─── Sub-component: Transfer Counter Badge ────────────────────────────────────
+function TransferCounterBadge({
+  card,
+  onTick,
+  onReset,
+}: {
+  card: any;
+  onTick: () => void;
+  onReset: () => void;
+}) {
+  const maxTransfers: number | null = card.max_transfers ?? null;
+  if (maxTransfers === null) return null;
+
+  const used: number = card.transfers_used ?? 0;
+  const isLimitReached = used >= maxTransfers;
+  const daysRemaining = getDaysRemaining(card.last_reset_date);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      {/* Counter badge */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div>
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${
+              isLimitReached
+                ? 'bg-red-100 text-red-700 border border-red-200'
+                : used >= maxTransfers * 0.8
+                ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+            }`}
+          >
+            <span>🔄</span>
+            <span>{used} / {maxTransfers} Transfers Used</span>
+          </span>
+        </div>
+
+        {/* Reset button */}
+        <button
+          onClick={onReset}
+          title="Reset counter to 0"
+          className="text-slate-400 hover:text-indigo-600 p-1 rounded-lg transition-colors cursor-pointer"
+        >
+          {/* Refresh icon */}
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Reset cycle info */}
+      {daysRemaining !== null && (
+        <p className="text-[10px] text-slate-400 mb-2">
+          {daysRemaining === 0
+            ? 'Resets today (30-day cycle)'
+            : `Resets in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`}
+        </p>
+      )}
+
+      {/* Limit reached warning */}
+      {isLimitReached ? (
+        <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-3 py-2 rounded-lg">
+          <span>🚫</span>
+          <span>30-Day Limit Reached</span>
+        </div>
+      ) : (
+        <button
+          onClick={onTick}
+          className="w-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+        >
+          <span>＋</span>
+          <span>Tick Transfer</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function CardsOverview({ cards, cardholders }: { cards: any[], cardholders: any[] }) {
   const [showTopupModal, setShowTopupModal] = useState<string | null>(null);
   const [showCreateCardModal, setShowCreateCardModal] = useState(false);
   const [editingCard, setEditingCard] = useState<any | null>(null);
   const [deletingCard, setDeletingCard] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [tickingCardId, setTickingCardId] = useState<string | null>(null);
+  const [tickError, setTickError] = useState<Record<string, string>>({});
 
   const handleCreateCard = async (formData: FormData) => {
     setErrorMsg(null);
@@ -58,6 +149,24 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
     const res = await toggleCardStatus(formData);
     if (res?.error) {
       setErrorMsg(res.error);
+    }
+  };
+
+  const handleTickTransfer = async (cardId: string) => {
+    setTickingCardId(cardId);
+    setTickError(prev => ({ ...prev, [cardId]: '' }));
+    const res = await tickCardTransfer(cardId);
+    if (res?.error) {
+      setTickError(prev => ({ ...prev, [cardId]: res.error! }));
+    }
+    setTickingCardId(null);
+  };
+
+  const handleResetCounter = async (cardId: string) => {
+    setTickError(prev => ({ ...prev, [cardId]: '' }));
+    const res = await resetCardCounter(cardId);
+    if (res?.error) {
+      setTickError(prev => ({ ...prev, [cardId]: res.error! }));
     }
   };
 
@@ -113,7 +222,21 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
                   <option value="Visa">Visa</option>
                 </select>
               </div>
-              <div className="flex gap-3 mt-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Max Transfers (30-Day Limit) <span className="text-slate-400 font-normal">— optional</span>
+                </label>
+                <input
+                  type="number"
+                  name="max_transfers"
+                  min="1"
+                  step="1"
+                  placeholder="e.g. 5"
+                  className="w-full p-2 border border-slate-200 rounded-lg text-sm text-black"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Leave blank to disable the transfer counter on this card.</p>
+              </div>
+              <div className="flex gap-3 mt-2">
                 <button type="submit" className="flex-1 bg-slate-900 text-white font-medium py-2 rounded-lg cursor-pointer">Create</button>
                 <button type="button" onClick={() => setShowCreateCardModal(false)} className="flex-1 bg-slate-100 text-slate-700 font-medium py-2 rounded-lg hover:bg-slate-200 cursor-pointer">Cancel</button>
               </div>
@@ -179,7 +302,21 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
                   </select>
                 </div>
               </div>
-              <div className="flex gap-3 mt-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Max Transfers (30-Day Limit) <span className="text-slate-400 font-normal">— optional</span>
+                </label>
+                <input
+                  type="number"
+                  name="max_transfers"
+                  min="1"
+                  step="1"
+                  defaultValue={editingCard.max_transfers ?? ''}
+                  placeholder="e.g. 5 — leave blank to disable"
+                  className="w-full p-2 border border-slate-200 rounded-lg text-sm text-black"
+                />
+              </div>
+              <div className="flex gap-3 mt-2">
                 <button type="submit" className="flex-1 bg-slate-900 text-white font-medium py-2 rounded-lg cursor-pointer">Save Changes</button>
                 <button type="button" onClick={() => setEditingCard(null)} className="flex-1 bg-slate-100 text-slate-700 font-medium py-2 rounded-lg hover:bg-slate-200 cursor-pointer">Cancel</button>
               </div>
@@ -219,6 +356,8 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
           const owner = cardholders.find(c => c.id === card.cardholder_id);
           const cardCurrency = card.currency || 'USD';
           const isActive = card.is_active !== false;
+          const cardTickError = tickError[card.id] || '';
+          const isTicking = tickingCardId === card.id;
 
           return (
             <div
@@ -279,7 +418,25 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
                 </p>
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              {/* Transfer Counter Section */}
+              {card.max_transfers != null && isActive && (
+                <>
+                  {isTicking ? (
+                    <div className="mt-3 pt-3 border-t border-slate-100 text-center text-xs text-slate-400 py-2">Updating…</div>
+                  ) : (
+                    <TransferCounterBadge
+                      card={card}
+                      onTick={() => handleTickTransfer(card.id)}
+                      onReset={() => handleResetCounter(card.id)}
+                    />
+                  )}
+                  {cardTickError && (
+                    <p className="text-xs text-red-600 mt-1.5 font-medium">{cardTickError}</p>
+                  )}
+                </>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-slate-100">
                 {isActive ? (
                   <button
                     onClick={() => { setErrorMsg(null); setShowTopupModal(card.id); }}
@@ -305,7 +462,7 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
                 </button>
               </div>
 
-              {/* Record Transaction Modal */}
+              {/* Record Transaction Inline Modal */}
               {showTopupModal === card.id && (
                 <div className="absolute inset-0 bg-white/95 backdrop-blur-sm p-4 rounded-2xl z-10 flex flex-col justify-center border border-slate-200">
                   <h4 className="font-medium text-slate-900 mb-2">Record Transaction ({cardCurrency})</h4>

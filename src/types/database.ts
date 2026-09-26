@@ -18,6 +18,9 @@ export interface Card {
   last_four?: string;
   brand?: string | null;
   is_active?: boolean;
+  max_transfers?: number | null;
+  transfers_used?: number;
+  last_reset_date?: string | null;
 }
 
 export interface Transaction {
