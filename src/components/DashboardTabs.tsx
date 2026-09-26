@@ -7,7 +7,7 @@ import LoanTracker from '@/components/LoanTracker';
 import TransactionFeed from '@/components/TransactionFeed';
 import TransferView from '@/components/TransferView';
 import RefreshButton from '@/components/RefreshButton';
-import { logoutAction } from '@/app/actions';
+import { logoutAction, triggerBackupAction } from '@/app/actions';
 import { Card, Cardholder, Loan, Transaction, Transfer } from '@/types/database';
 
 interface Props {
@@ -22,6 +22,27 @@ type TabType = 'home' | 'moneygram' | 'western_union' | 'cards' | 'loans';
 
 export default function DashboardTabs({ cards, cardholders, loans, transactions, transfers }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [backupStatus, setBackupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [backupMessage, setBackupMessage] = useState('');
+
+  async function handleInstantBackup() {
+    setBackupStatus('loading');
+    setBackupMessage('');
+    try {
+      const result = await triggerBackupAction();
+      if (result.error) {
+        setBackupStatus('error');
+        setBackupMessage(result.error);
+      } else {
+        setBackupStatus('success');
+        setBackupMessage(`Backup saved: ${result.file ?? ''}`);
+      }
+    } catch {
+      setBackupStatus('error');
+      setBackupMessage('Unexpected error during backup.');
+    }
+    setTimeout(() => setBackupStatus('idle'), 5000);
+  }
 
   const balancesByCurrency = { USD: 0, EUR: 0, IQD: 0 };
   cards.forEach(card => {
@@ -85,16 +106,37 @@ export default function DashboardTabs({ cards, cardholders, loans, transactions,
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Finance Dashboard</h1>
             <p className="text-slate-500 text-sm mt-1">Tailored for Mr. Marwan</p>
           </div>
-          <div className="flex items-center gap-3">
-            <RefreshButton />
-            <form action={logoutAction}>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-3">
               <button
-                type="submit"
-                className="bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+                onClick={handleInstantBackup}
+                disabled={backupStatus === 'loading'}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait ${
+                  backupStatus === 'success'
+                    ? 'bg-green-50 text-green-700 border-green-200'
+                    : backupStatus === 'error'
+                    ? 'bg-red-50 text-red-700 border-red-200'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
               >
-                Log Out
+                <span>{backupStatus === 'loading' ? '⏳' : backupStatus === 'success' ? '✅' : backupStatus === 'error' ? '❌' : '💾'}</span>
+                <span>{backupStatus === 'loading' ? 'Backing up…' : 'Create Instant Backup'}</span>
               </button>
-            </form>
+              <RefreshButton />
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+                >
+                  Log Out
+                </button>
+              </form>
+            </div>
+            {backupMessage && (
+              <p className={`text-xs font-medium ${backupStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                {backupMessage}
+              </p>
+            )}
           </div>
         </header>
 

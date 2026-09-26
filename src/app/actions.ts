@@ -514,3 +514,86 @@ export async function deleteTransfer(formData: FormData) {
     return { error: err.message || 'Failed to delete transfer' };
   }
 }
+
+// ─── Backup Action ────────────────────────────────────────────────────────────
+
+export async function triggerBackupAction(): Promise<{ success?: boolean; file?: string; error?: string }> {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      return { error: 'CRON_SECRET is not configured on the server.' };
+    }
+
+    const supabase = createAdminClient();
+
+    // Fetch all data in parallel
+    const [
+      { data: cards, error: cardsError },
+      { data: cardholders, error: cardholdersError },
+      { data: loans, error: loansError },
+      { data: loanRepayments, error: repayError },
+      { data: transactions, error: txError },
+      { data: transfers, error: transfersError },
+    ] = await Promise.all([
+      supabase.from('cards').select('*').order('created_at', { ascending: true }),
+      supabase.from('cardholders').select('*').order('created_at', { ascending: true }),
+      supabase.from('loans').select('*').order('created_at', { ascending: true }),
+      supabase.from('loan_repayments').select('*').order('created_at', { ascending: true }),
+      supabase.from('transactions').select('*').order('created_at', { ascending: true }),
+      supabase.from('transfers').select('*').order('created_at', { ascending: true }),
+    ]);
+
+    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError]
+      .filter(Boolean)
+      .map((e: any) => e?.message);
+
+    if (errors.length > 0) {
+      return { error: `Data fetch failed: ${errors.join('; ')}` };
+    }
+
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timestamp = now.toISOString();
+
+    const backupPayload = {
+      timestamp,
+      generated_at: timestamp,
+      version: '1.0',
+      tables: {
+        cards: cards ?? [],
+        cardholders: cardholders ?? [],
+        loans: loans ?? [],
+        loan_repayments: loanRepayments ?? [],
+        transactions: transactions ?? [],
+        transfers: transfers ?? [],
+      },
+      summary: {
+        cards_count: (cards ?? []).length,
+        cardholders_count: (cardholders ?? []).length,
+        loans_count: (loans ?? []).length,
+        loan_repayments_count: (loanRepayments ?? []).length,
+        transactions_count: (transactions ?? []).length,
+        transfers_count: (transfers ?? []).length,
+      },
+    };
+
+    const fileName = `backup_${dateStr}.json`;
+    const fileContent = JSON.stringify(backupPayload, null, 2);
+    const fileBytes = new TextEncoder().encode(fileContent);
+
+    const { error: uploadError } = await supabase.storage
+      .from('database-backups')
+      .upload(fileName, fileBytes, {
+        contentType: 'application/json',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      return { error: `Storage upload failed: ${uploadError.message}` };
+    }
+
+    return { success: true, file: fileName };
+  } catch (err: any) {
+    return { error: err.message || 'Backup failed unexpectedly.' };
+  }
+}
