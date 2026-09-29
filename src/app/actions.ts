@@ -691,6 +691,93 @@ export async function deletePersonalExpense(formData: FormData) {
   }
 }
 
+// ─── Personal Revenue Actions ─────────────────────────────────────────────────
+
+export async function addPersonalRevenue(formData: FormData) {
+  try {
+    const description = (formData.get('description') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const category = (formData.get('category') as string)?.trim() || 'General';
+    const receivedAt = (formData.get('received_at') as string)?.trim() || new Date().toISOString().split('T')[0];
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!description || isNaN(amount)) {
+      return { error: 'Description and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+    const { error: insertErr } = await supabase.from('personal_revenues').insert({
+      description,
+      amount,
+      currency,
+      category,
+      received_at: receivedAt,
+      notes,
+    });
+
+    if (insertErr) return { error: insertErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to add personal revenue' };
+  }
+}
+
+export async function updatePersonalRevenue(formData: FormData) {
+  try {
+    const id = formData.get('revenue_id') as string;
+    const description = (formData.get('description') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const category = (formData.get('category') as string)?.trim() || 'General';
+    const receivedAt = (formData.get('received_at') as string)?.trim() || new Date().toISOString().split('T')[0];
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!id || !description || isNaN(amount)) {
+      return { error: 'Revenue ID, Description, and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+    const { error: updateErr } = await supabase
+      .from('personal_revenues')
+      .update({
+        description,
+        amount,
+        currency,
+        category,
+        received_at: receivedAt,
+        notes,
+      })
+      .eq('id', id);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update personal revenue' };
+  }
+}
+
+export async function deletePersonalRevenue(formData: FormData) {
+  try {
+    const id = formData.get('revenue_id') as string;
+    if (!id) return { error: 'Revenue ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase.from('personal_revenues').delete().eq('id', id);
+
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete personal revenue' };
+  }
+}
+
 // ─── Backup Action ────────────────────────────────────────────────────────────
 
 export async function triggerBackupAction(): Promise<{ success?: boolean; file?: string; error?: string }> {
@@ -711,6 +798,7 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
       { data: transactions, error: txError },
       { data: transfers, error: transfersError },
       { data: personalExpenses, error: personalErr },
+      { data: personalRevenues, error: revenueErr },
     ] = await Promise.all([
       supabase.from('cards').select('*').order('created_at', { ascending: true }),
       supabase.from('cardholders').select('*').order('created_at', { ascending: true }),
@@ -719,9 +807,10 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
       supabase.from('transactions').select('*').order('created_at', { ascending: true }),
       supabase.from('transfers').select('*').order('created_at', { ascending: true }),
       supabase.from('personal_expenses').select('*').order('created_at', { ascending: true }),
+      supabase.from('personal_revenues').select('*').order('created_at', { ascending: true }),
     ]);
 
-    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError, personalErr]
+    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError, personalErr, revenueErr]
       .filter(Boolean)
       .map((e: any) => e?.message);
 
@@ -745,6 +834,7 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
         transactions: transactions ?? [],
         transfers: transfers ?? [],
         personal_expenses: personalExpenses ?? [],
+        personal_revenues: personalRevenues ?? [],
       },
       summary: {
         cards_count: (cards ?? []).length,
@@ -754,6 +844,7 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
         transactions_count: (transactions ?? []).length,
         transfers_count: (transfers ?? []).length,
         personal_expenses_count: (personalExpenses ?? []).length,
+        personal_revenues_count: (personalRevenues ?? []).length,
       },
     };
 
@@ -777,4 +868,5 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
     return { error: err.message || 'Backup failed unexpectedly.' };
   }
 }
+
 

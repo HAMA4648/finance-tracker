@@ -67,6 +67,17 @@ export interface PersonalExpense {
   notes?: string | null;
 }
 
+export interface PersonalRevenue {
+  id: string;
+  created_at: string;
+  description: string;
+  amount: number;
+  currency: CurrencyType | string;
+  category?: string | null;
+  received_at: string;
+  notes?: string | null;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -99,6 +110,11 @@ export interface Database {
         Row: PersonalExpense;
         Insert: Omit<PersonalExpense, 'id' | 'created_at'>;
         Update: Partial<Omit<PersonalExpense, 'id' | 'created_at'>>;
+      };
+      personal_revenues: {
+        Row: PersonalRevenue;
+        Insert: Omit<PersonalRevenue, 'id' | 'created_at'>;
+        Update: Partial<Omit<PersonalRevenue, 'id' | 'created_at'>>;
       };
     };
     Views: Record<string, never>;

@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
       { data: transactions, error: txError },
       { data: transfers, error: transfersError },
       { data: personalExpenses, error: personalErr },
+      { data: personalRevenues, error: revenueErr },
     ] = await Promise.all([
       supabase.from('cards').select('*').order('created_at', { ascending: true }),
       supabase.from('cardholders').select('*').order('created_at', { ascending: true }),
@@ -33,10 +34,11 @@ export async function GET(req: NextRequest) {
       supabase.from('transactions').select('*').order('created_at', { ascending: true }),
       supabase.from('transfers').select('*').order('created_at', { ascending: true }),
       supabase.from('personal_expenses').select('*').order('created_at', { ascending: true }),
+      supabase.from('personal_revenues').select('*').order('created_at', { ascending: true }),
     ]);
 
     // Collect any errors
-    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError, personalErr]
+    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError, personalErr, revenueErr]
       .filter(Boolean)
       .map(e => e?.message);
 
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest) {
         transactions: transactions ?? [],
         transfers: transfers ?? [],
         personal_expenses: personalExpenses ?? [],
+        personal_revenues: personalRevenues ?? [],
       },
       summary: {
         cards_count: (cards ?? []).length,
@@ -70,6 +73,7 @@ export async function GET(req: NextRequest) {
         transactions_count: (transactions ?? []).length,
         transfers_count: (transfers ?? []).length,
         personal_expenses_count: (personalExpenses ?? []).length,
+        personal_revenues_count: (personalRevenues ?? []).length,
       },
     };
 

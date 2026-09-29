@@ -7,9 +7,10 @@ import LoanTracker from '@/components/LoanTracker';
 import TransactionFeed from '@/components/TransactionFeed';
 import TransferView from '@/components/TransferView';
 import PersonalExpenseView from '@/components/PersonalExpenseView';
+import PersonalRevenueView from '@/components/PersonalRevenueView';
 import RefreshButton from '@/components/RefreshButton';
 import { logoutAction, triggerBackupAction } from '@/app/actions';
-import { Card, Cardholder, Loan, Transaction, Transfer, PersonalExpense } from '@/types/database';
+import { Card, Cardholder, Loan, Transaction, Transfer, PersonalExpense, PersonalRevenue } from '@/types/database';
 
 interface Props {
   cards: Card[];
@@ -18,11 +19,20 @@ interface Props {
   transactions: Transaction[];
   transfers: Transfer[];
   personalExpenses?: PersonalExpense[];
+  personalRevenues?: PersonalRevenue[];
 }
 
-type TabType = 'home' | 'moneygram' | 'western_union' | 'cards' | 'loans' | 'personal';
+type TabType = 'home' | 'moneygram' | 'western_union' | 'cards' | 'loans' | 'personal' | 'personal_revenue';
 
-export default function DashboardTabs({ cards, cardholders, loans, transactions, transfers, personalExpenses = [] }: Props) {
+export default function DashboardTabs({
+  cards,
+  cardholders,
+  loans,
+  transactions,
+  transfers,
+  personalExpenses = [],
+  personalRevenues = []
+}: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [backupStatus, setBackupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [backupMessage, setBackupMessage] = useState('');
@@ -106,6 +116,21 @@ export default function DashboardTabs({ cards, cardholders, loans, transactions,
     }
   });
 
+  // Calculate Personal Revenue (This Month)
+  const personalRevenueThisMonthByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  personalRevenues.forEach(r => {
+    const receivedMonthKey = (r.received_at || r.created_at || '').slice(0, 7);
+    if (receivedMonthKey === currentMonthKey) {
+      const cur = (r.currency || 'USD').toUpperCase();
+      const amt = Number(r.amount) || 0;
+      if (cur in personalRevenueThisMonthByCurrency) {
+        personalRevenueThisMonthByCurrency[cur as keyof typeof personalRevenueThisMonthByCurrency] += amt;
+      } else {
+        personalRevenueThisMonthByCurrency.USD += amt;
+      }
+    }
+  });
+
   const cardsCount = cards.filter(c => c.is_active !== false).length;
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
@@ -115,6 +140,7 @@ export default function DashboardTabs({ cards, cardholders, loans, transactions,
     { id: 'cards', label: 'Cards', icon: '💳' },
     { id: 'loans', label: 'Loans', icon: '🤝' },
     { id: 'personal', label: 'Personal Daily', icon: '🛒' },
+    { id: 'personal_revenue', label: 'Personal Revenue', icon: '💰' },
   ];
 
   return (
@@ -187,7 +213,7 @@ export default function DashboardTabs({ cards, cardholders, loans, transactions,
                   Welcome back, Dear Mr. Marwan
                 </h2>
                 <p className="text-indigo-200 text-sm mt-2 max-w-xl">
-                  Here is your real-time financial overview across all active cards, loans, Moneygram, Western Union transfers, and personal expenses.
+                  Here is your real-time financial overview across all active cards, loans, Moneygram, Western Union transfers, personal expenses, and personal revenues.
                 </p>
               </div>
             </div>
@@ -198,6 +224,7 @@ export default function DashboardTabs({ cards, cardholders, loans, transactions,
               moneygramByCurrency={moneygramByCurrency}
               westernUnionByCurrency={westernUnionByCurrency}
               personalSpentThisMonthByCurrency={personalSpentThisMonthByCurrency}
+              personalRevenueThisMonthByCurrency={personalRevenueThisMonthByCurrency}
               cardsCount={cardsCount}
             />
 
@@ -232,6 +259,12 @@ export default function DashboardTabs({ cards, cardholders, loans, transactions,
         {activeTab === 'personal' && (
           <div className="animate-fadeIn">
             <PersonalExpenseView expenses={personalExpenses} />
+          </div>
+        )}
+
+        {activeTab === 'personal_revenue' && (
+          <div className="animate-fadeIn">
+            <PersonalRevenueView revenues={personalRevenues} />
           </div>
         )}
       </div>

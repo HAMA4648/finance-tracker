@@ -10,14 +10,16 @@ export default async function Dashboard() {
     { data: loans },
     { data: transactions },
     { data: transfers },
-    { data: personalExpenses }
+    { data: personalExpenses },
+    { data: personalRevenues }
   ] = await Promise.all([
     supabase.from('cards').select('*'),
     supabase.from('cardholders').select('*'),
     supabase.from('loans').select('*').order('created_at', { ascending: false }),
     supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(20),
     supabase.from('transfers').select('*').order('created_at', { ascending: false }),
-    supabase.from('personal_expenses').select('*').order('spent_at', { ascending: false })
+    supabase.from('personal_expenses').select('*').order('spent_at', { ascending: false }),
+    supabase.from('personal_revenues').select('*').order('received_at', { ascending: false })
   ]);
 
   return (
@@ -28,6 +30,7 @@ export default async function Dashboard() {
       transactions={(transactions || []) as any[]}
       transfers={(transfers || []) as any[]}
       personalExpenses={(personalExpenses || []) as any[]}
+      personalRevenues={(personalRevenues || []) as any[]}
     />
   );
 }
