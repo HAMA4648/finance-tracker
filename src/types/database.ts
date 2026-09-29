@@ -56,6 +56,17 @@ export interface Transfer {
   created_at: string;
 }
 
+export interface PersonalExpense {
+  id: string;
+  created_at: string;
+  description: string;
+  amount: number;
+  currency: CurrencyType | string;
+  category?: string | null;
+  spent_at: string;
+  notes?: string | null;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -83,6 +94,11 @@ export interface Database {
         Row: Transfer;
         Insert: Omit<Transfer, 'id' | 'created_at'>;
         Update: Partial<Omit<Transfer, 'id' | 'created_at'>>;
+      };
+      personal_expenses: {
+        Row: PersonalExpense;
+        Insert: Omit<PersonalExpense, 'id' | 'created_at'>;
+        Update: Partial<Omit<PersonalExpense, 'id' | 'created_at'>>;
       };
     };
     Views: Record<string, never>;
