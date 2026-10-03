@@ -14,7 +14,9 @@ export default async function Dashboard() {
     { data: transfers },
     { data: personalExpenses },
     { data: personalRevenues },
-    { data: cardTicks }
+    { data: cardTicks },
+    { data: sheinExpenses },
+    { data: sheinRevenues }
   ] = await Promise.all([
     supabase.from('cards').select('*'),
     supabase.from('cardholders').select('*'),
@@ -24,6 +26,8 @@ export default async function Dashboard() {
     supabase.from('personal_expenses').select('*').order('spent_at', { ascending: false }),
     supabase.from('personal_revenues').select('*').order('received_at', { ascending: false }),
     supabase.from('card_ticks').select('*').gte('ticked_at', thirtyDaysAgo).order('ticked_at', { ascending: true }),
+    supabase.from('shein_expenses').select('*').order('spent_at', { ascending: false }),
+    supabase.from('shein_revenues').select('*').order('received_at', { ascending: false })
   ]);
 
   return (
@@ -36,6 +40,8 @@ export default async function Dashboard() {
       personalExpenses={(personalExpenses || []) as any[]}
       personalRevenues={(personalRevenues || []) as any[]}
       cardTicks={(cardTicks || []) as any[]}
+      sheinExpenses={(sheinExpenses || []) as any[]}
+      sheinRevenues={(sheinRevenues || []) as any[]}
     />
   );
 }

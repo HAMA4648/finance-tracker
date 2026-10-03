@@ -8,9 +8,21 @@ import TransactionFeed from '@/components/TransactionFeed';
 import TransferView from '@/components/TransferView';
 import PersonalExpenseView from '@/components/PersonalExpenseView';
 import PersonalRevenueView from '@/components/PersonalRevenueView';
+import SheinStoreView from '@/components/SheinStoreView';
 import RefreshButton from '@/components/RefreshButton';
 import { logoutAction, triggerBackupAction } from '@/app/actions';
-import { Card, Cardholder, Loan, Transaction, Transfer, PersonalExpense, PersonalRevenue, CardTick } from '@/types/database';
+import {
+  Card,
+  Cardholder,
+  Loan,
+  Transaction,
+  Transfer,
+  PersonalExpense,
+  PersonalRevenue,
+  CardTick,
+  SheinExpense,
+  SheinRevenue,
+} from '@/types/database';
 
 interface Props {
   cards: Card[];
@@ -21,9 +33,19 @@ interface Props {
   personalExpenses?: PersonalExpense[];
   personalRevenues?: PersonalRevenue[];
   cardTicks?: CardTick[];
+  sheinExpenses?: SheinExpense[];
+  sheinRevenues?: SheinRevenue[];
 }
 
-type TabType = 'home' | 'moneygram' | 'western_union' | 'cards' | 'loans' | 'personal' | 'personal_revenue';
+type TabType =
+  | 'home'
+  | 'moneygram'
+  | 'western_union'
+  | 'cards'
+  | 'loans'
+  | 'personal'
+  | 'personal_revenue'
+  | 'shein';
 
 export default function DashboardTabs({
   cards,
@@ -34,6 +56,8 @@ export default function DashboardTabs({
   personalExpenses = [],
   personalRevenues = [],
   cardTicks = [],
+  sheinExpenses = [],
+  sheinRevenues = [],
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [backupStatus, setBackupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -133,10 +157,38 @@ export default function DashboardTabs({
     }
   });
 
+  // Calculate SHEIN Net Sales (This Month)
+  const sheinNetSalesThisMonthByCurrency = { USD: 0, EUR: 0, IQD: 0 };
+  sheinRevenues.forEach(r => {
+    const monthKey = (r.received_at || r.created_at || '').slice(0, 7);
+    if (monthKey === currentMonthKey) {
+      const cur = (r.currency || 'USD').toUpperCase();
+      const amt = Number(r.amount) || 0;
+      if (cur in sheinNetSalesThisMonthByCurrency) {
+        sheinNetSalesThisMonthByCurrency[cur as keyof typeof sheinNetSalesThisMonthByCurrency] += amt;
+      } else {
+        sheinNetSalesThisMonthByCurrency.USD += amt;
+      }
+    }
+  });
+  sheinExpenses.forEach(e => {
+    const monthKey = (e.spent_at || e.created_at || '').slice(0, 7);
+    if (monthKey === currentMonthKey) {
+      const cur = (e.currency || 'USD').toUpperCase();
+      const amt = Number(e.amount) || 0;
+      if (cur in sheinNetSalesThisMonthByCurrency) {
+        sheinNetSalesThisMonthByCurrency[cur as keyof typeof sheinNetSalesThisMonthByCurrency] -= amt;
+      } else {
+        sheinNetSalesThisMonthByCurrency.USD -= amt;
+      }
+    }
+  });
+
   const cardsCount = cards.filter(c => c.is_active !== false).length;
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'home', label: 'Home', icon: '🏠' },
+    { id: 'shein', label: 'SHEIN Store', icon: '🛍️' },
     { id: 'moneygram', label: 'Moneygram', icon: '💸' },
     { id: 'western_union', label: 'Western Union', icon: '🌐' },
     { id: 'cards', label: 'Cards', icon: '💳' },
@@ -215,7 +267,7 @@ export default function DashboardTabs({
                   Welcome back, Dear Mr. Marwan
                 </h2>
                 <p className="text-indigo-200 text-sm mt-2 max-w-xl">
-                  Here is your real-time financial overview across all active cards, loans, Moneygram, Western Union transfers, personal expenses, and personal revenues.
+                  Here is your real-time financial overview across all active cards, loans, Moneygram, Western Union transfers, SHEIN store sales, personal expenses, and personal revenues.
                 </p>
               </div>
             </div>
@@ -227,10 +279,17 @@ export default function DashboardTabs({
               westernUnionByCurrency={westernUnionByCurrency}
               personalSpentThisMonthByCurrency={personalSpentThisMonthByCurrency}
               personalRevenueThisMonthByCurrency={personalRevenueThisMonthByCurrency}
+              sheinNetSalesThisMonthByCurrency={sheinNetSalesThisMonthByCurrency}
               cardsCount={cardsCount}
             />
 
             <TransactionFeed transactions={transactions} cards={cards} />
+          </div>
+        )}
+
+        {activeTab === 'shein' && (
+          <div className="animate-fadeIn">
+            <SheinStoreView expenses={sheinExpenses} revenues={sheinRevenues} />
           </div>
         )}
 

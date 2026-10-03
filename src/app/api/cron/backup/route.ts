@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
       { data: transfers, error: transfersError },
       { data: personalExpenses, error: personalErr },
       { data: personalRevenues, error: revenueErr },
+      { data: sheinExpenses, error: sheinExpensesErr },
+      { data: sheinRevenues, error: sheinRevenuesErr },
     ] = await Promise.all([
       supabase.from('cards').select('*').order('created_at', { ascending: true }),
       supabase.from('cardholders').select('*').order('created_at', { ascending: true }),
@@ -35,10 +37,15 @@ export async function GET(req: NextRequest) {
       supabase.from('transfers').select('*').order('created_at', { ascending: true }),
       supabase.from('personal_expenses').select('*').order('created_at', { ascending: true }),
       supabase.from('personal_revenues').select('*').order('created_at', { ascending: true }),
+      supabase.from('shein_expenses').select('*').order('created_at', { ascending: true }),
+      supabase.from('shein_revenues').select('*').order('created_at', { ascending: true }),
     ]);
 
     // Collect any errors
-    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError, personalErr, revenueErr]
+    const errors = [
+      cardsError, cardholdersError, loansError, repayError, txError, transfersError,
+      personalErr, revenueErr, sheinExpensesErr, sheinRevenuesErr
+    ]
       .filter(Boolean)
       .map(e => e?.message);
 
@@ -64,6 +71,8 @@ export async function GET(req: NextRequest) {
         transfers: transfers ?? [],
         personal_expenses: personalExpenses ?? [],
         personal_revenues: personalRevenues ?? [],
+        shein_expenses: sheinExpenses ?? [],
+        shein_revenues: sheinRevenues ?? [],
       },
       summary: {
         cards_count: (cards ?? []).length,
@@ -74,6 +83,8 @@ export async function GET(req: NextRequest) {
         transfers_count: (transfers ?? []).length,
         personal_expenses_count: (personalExpenses ?? []).length,
         personal_revenues_count: (personalRevenues ?? []).length,
+        shein_expenses_count: (sheinExpenses ?? []).length,
+        shein_revenues_count: (sheinRevenues ?? []).length,
       },
     };
 

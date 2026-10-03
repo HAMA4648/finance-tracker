@@ -84,6 +84,28 @@ export interface PersonalRevenue {
   notes?: string | null;
 }
 
+export interface SheinExpense {
+  id: string;
+  created_at: string;
+  description: string;
+  amount: number;
+  currency: CurrencyType | string;
+  category?: string | null;
+  spent_at: string;
+  notes?: string | null;
+}
+
+export interface SheinRevenue {
+  id: string;
+  created_at: string;
+  description: string;
+  amount: number;
+  currency: CurrencyType | string;
+  category?: string | null;
+  received_at: string;
+  notes?: string | null;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -126,6 +148,16 @@ export interface Database {
         Row: CardTick;
         Insert: Omit<CardTick, 'id'>;
         Update: Partial<Omit<CardTick, 'id'>>;
+      };
+      shein_expenses: {
+        Row: SheinExpense;
+        Insert: Omit<SheinExpense, 'id' | 'created_at'>;
+        Update: Partial<Omit<SheinExpense, 'id' | 'created_at'>>;
+      };
+      shein_revenues: {
+        Row: SheinRevenue;
+        Insert: Omit<SheinRevenue, 'id' | 'created_at'>;
+        Update: Partial<Omit<SheinRevenue, 'id' | 'created_at'>>;
       };
     };
     Views: Record<string, never>;

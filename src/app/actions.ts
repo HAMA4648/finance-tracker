@@ -794,6 +794,180 @@ export async function deletePersonalRevenue(formData: FormData) {
   }
 }
 
+// ─── SHEIN Store Expenses Actions ─────────────────────────────────────────────
+
+export async function addSheinExpense(formData: FormData) {
+  try {
+    const description = (formData.get('description') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const category = (formData.get('category') as string)?.trim() || 'General';
+    const spentAt = (formData.get('spent_at') as string)?.trim() || new Date().toISOString().split('T')[0];
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!description || isNaN(amount)) {
+      return { error: 'Description and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+    const { error: insertErr } = await supabase.from('shein_expenses').insert({
+      description,
+      amount,
+      currency,
+      category,
+      spent_at: spentAt,
+      notes,
+    });
+
+    if (insertErr) return { error: insertErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to add SHEIN expense' };
+  }
+}
+
+export async function updateSheinExpense(formData: FormData) {
+  try {
+    const id = formData.get('expense_id') as string;
+    const description = (formData.get('description') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const category = (formData.get('category') as string)?.trim() || 'General';
+    const spentAt = (formData.get('spent_at') as string)?.trim() || new Date().toISOString().split('T')[0];
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!id || !description || isNaN(amount)) {
+      return { error: 'Expense ID, Description, and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+    const { error: updateErr } = await supabase
+      .from('shein_expenses')
+      .update({
+        description,
+        amount,
+        currency,
+        category,
+        spent_at: spentAt,
+        notes,
+      })
+      .eq('id', id);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update SHEIN expense' };
+  }
+}
+
+export async function deleteSheinExpense(formData: FormData) {
+  try {
+    const id = formData.get('expense_id') as string;
+    if (!id) return { error: 'Expense ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase.from('shein_expenses').delete().eq('id', id);
+
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete SHEIN expense' };
+  }
+}
+
+// ─── SHEIN Store Revenue Actions ──────────────────────────────────────────────
+
+export async function addSheinRevenue(formData: FormData) {
+  try {
+    const description = (formData.get('description') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const category = (formData.get('category') as string)?.trim() || 'General';
+    const receivedAt = (formData.get('received_at') as string)?.trim() || new Date().toISOString().split('T')[0];
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!description || isNaN(amount)) {
+      return { error: 'Description and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+    const { error: insertErr } = await supabase.from('shein_revenues').insert({
+      description,
+      amount,
+      currency,
+      category,
+      received_at: receivedAt,
+      notes,
+    });
+
+    if (insertErr) return { error: insertErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to add SHEIN revenue' };
+  }
+}
+
+export async function updateSheinRevenue(formData: FormData) {
+  try {
+    const id = formData.get('revenue_id') as string;
+    const description = (formData.get('description') as string)?.trim();
+    const amount = parseFloat(formData.get('amount') as string);
+    const currency = (formData.get('currency') as string) || 'USD';
+    const category = (formData.get('category') as string)?.trim() || 'General';
+    const receivedAt = (formData.get('received_at') as string)?.trim() || new Date().toISOString().split('T')[0];
+    const notes = (formData.get('notes') as string)?.trim() || null;
+
+    if (!id || !description || isNaN(amount)) {
+      return { error: 'Revenue ID, Description, and Amount are required' };
+    }
+
+    const supabase = createAdminClient();
+    const { error: updateErr } = await supabase
+      .from('shein_revenues')
+      .update({
+        description,
+        amount,
+        currency,
+        category,
+        received_at: receivedAt,
+        notes,
+      })
+      .eq('id', id);
+
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update SHEIN revenue' };
+  }
+}
+
+export async function deleteSheinRevenue(formData: FormData) {
+  try {
+    const id = formData.get('revenue_id') as string;
+    if (!id) return { error: 'Revenue ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase.from('shein_revenues').delete().eq('id', id);
+
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete SHEIN revenue' };
+  }
+}
+
 // ─── Backup Action ────────────────────────────────────────────────────────────
 
 export async function triggerBackupAction(): Promise<{ success?: boolean; file?: string; error?: string }> {
@@ -815,6 +989,8 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
       { data: transfers, error: transfersError },
       { data: personalExpenses, error: personalErr },
       { data: personalRevenues, error: revenueErr },
+      { data: sheinExpenses, error: sheinExpensesErr },
+      { data: sheinRevenues, error: sheinRevenuesErr },
     ] = await Promise.all([
       supabase.from('cards').select('*').order('created_at', { ascending: true }),
       supabase.from('cardholders').select('*').order('created_at', { ascending: true }),
@@ -824,9 +1000,14 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
       supabase.from('transfers').select('*').order('created_at', { ascending: true }),
       supabase.from('personal_expenses').select('*').order('created_at', { ascending: true }),
       supabase.from('personal_revenues').select('*').order('created_at', { ascending: true }),
+      supabase.from('shein_expenses').select('*').order('created_at', { ascending: true }),
+      supabase.from('shein_revenues').select('*').order('created_at', { ascending: true }),
     ]);
 
-    const errors = [cardsError, cardholdersError, loansError, repayError, txError, transfersError, personalErr, revenueErr]
+    const errors = [
+      cardsError, cardholdersError, loansError, repayError, txError, transfersError,
+      personalErr, revenueErr, sheinExpensesErr, sheinRevenuesErr
+    ]
       .filter(Boolean)
       .map((e: any) => e?.message);
 
@@ -851,6 +1032,8 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
         transfers: transfers ?? [],
         personal_expenses: personalExpenses ?? [],
         personal_revenues: personalRevenues ?? [],
+        shein_expenses: sheinExpenses ?? [],
+        shein_revenues: sheinRevenues ?? [],
       },
       summary: {
         cards_count: (cards ?? []).length,
@@ -861,6 +1044,8 @@ export async function triggerBackupAction(): Promise<{ success?: boolean; file?:
         transfers_count: (transfers ?? []).length,
         personal_expenses_count: (personalExpenses ?? []).length,
         personal_revenues_count: (personalRevenues ?? []).length,
+        shein_expenses_count: (sheinExpenses ?? []).length,
+        shein_revenues_count: (sheinRevenues ?? []).length,
       },
     };
 
