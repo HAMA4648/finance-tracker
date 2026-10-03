@@ -10,7 +10,7 @@ import PersonalExpenseView from '@/components/PersonalExpenseView';
 import PersonalRevenueView from '@/components/PersonalRevenueView';
 import RefreshButton from '@/components/RefreshButton';
 import { logoutAction, triggerBackupAction } from '@/app/actions';
-import { Card, Cardholder, Loan, Transaction, Transfer, PersonalExpense, PersonalRevenue } from '@/types/database';
+import { Card, Cardholder, Loan, Transaction, Transfer, PersonalExpense, PersonalRevenue, CardTick } from '@/types/database';
 
 interface Props {
   cards: Card[];
@@ -20,6 +20,7 @@ interface Props {
   transfers: Transfer[];
   personalExpenses?: PersonalExpense[];
   personalRevenues?: PersonalRevenue[];
+  cardTicks?: CardTick[];
 }
 
 type TabType = 'home' | 'moneygram' | 'western_union' | 'cards' | 'loans' | 'personal' | 'personal_revenue';
@@ -31,7 +32,8 @@ export default function DashboardTabs({
   transactions,
   transfers,
   personalExpenses = [],
-  personalRevenues = []
+  personalRevenues = [],
+  cardTicks = [],
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [backupStatus, setBackupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -246,7 +248,7 @@ export default function DashboardTabs({
 
         {activeTab === 'cards' && (
           <div className="animate-fadeIn">
-            <CardsOverview cards={cards} cardholders={cardholders} />
+            <CardsOverview cards={cards} cardholders={cardholders} cardTicks={cardTicks} />
           </div>
         )}
 

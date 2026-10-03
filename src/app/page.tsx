@@ -4,6 +4,8 @@ import DashboardTabs from '@/components/DashboardTabs';
 export default async function Dashboard() {
   const supabase = await createClient();
 
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
   const [
     { data: cards },
     { data: cardholders },
@@ -11,7 +13,8 @@ export default async function Dashboard() {
     { data: transactions },
     { data: transfers },
     { data: personalExpenses },
-    { data: personalRevenues }
+    { data: personalRevenues },
+    { data: cardTicks }
   ] = await Promise.all([
     supabase.from('cards').select('*'),
     supabase.from('cardholders').select('*'),
@@ -19,7 +22,8 @@ export default async function Dashboard() {
     supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(20),
     supabase.from('transfers').select('*').order('created_at', { ascending: false }),
     supabase.from('personal_expenses').select('*').order('spent_at', { ascending: false }),
-    supabase.from('personal_revenues').select('*').order('received_at', { ascending: false })
+    supabase.from('personal_revenues').select('*').order('received_at', { ascending: false }),
+    supabase.from('card_ticks').select('*').gte('ticked_at', thirtyDaysAgo).order('ticked_at', { ascending: true }),
   ]);
 
   return (
@@ -31,6 +35,7 @@ export default async function Dashboard() {
       transfers={(transfers || []) as any[]}
       personalExpenses={(personalExpenses || []) as any[]}
       personalRevenues={(personalRevenues || []) as any[]}
+      cardTicks={(cardTicks || []) as any[]}
     />
   );
 }

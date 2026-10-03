@@ -46,6 +46,12 @@ export interface Loan {
   date?: string;
 }
 
+export interface CardTick {
+  id: string;
+  card_id: string;
+  ticked_at: string;
+}
+
 export interface Transfer {
   id: string;
   provider: 'moneygram' | 'western_union' | string;
@@ -115,6 +121,11 @@ export interface Database {
         Row: PersonalRevenue;
         Insert: Omit<PersonalRevenue, 'id' | 'created_at'>;
         Update: Partial<Omit<PersonalRevenue, 'id' | 'created_at'>>;
+      };
+      card_ticks: {
+        Row: CardTick;
+        Insert: Omit<CardTick, 'id'>;
+        Update: Partial<Omit<CardTick, 'id'>>;
       };
     };
     Views: Record<string, never>;

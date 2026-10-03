@@ -320,16 +320,16 @@ export async function toggleCardStatus(formData: FormData) {
 
 // ─── Transfer Counter Actions ─────────────────────────────────────────────────
 
-export async function tickCardTransfer(cardId: string): Promise<{ success?: boolean; transfers_used?: number; error?: string }> {
+export async function tickCardTransfer(cardId: string): Promise<{ success?: boolean; tick?: { id: string; ticked_at: string }; error?: string }> {
   try {
     if (!cardId) return { error: 'Card ID is required' };
 
     const supabase = createAdminClient();
 
-    // Fetch current card state
+    // Fetch card's max_transfers limit
     const { data: card, error: fetchErr } = await supabase
       .from('cards')
-      .select('max_transfers, transfers_used, last_reset_date')
+      .select('max_transfers')
       .eq('id', cardId)
       .single();
 
@@ -338,64 +338,80 @@ export async function tickCardTransfer(cardId: string): Promise<{ success?: bool
     const maxTransfers: number | null = card.max_transfers ?? null;
     if (maxTransfers === null) return { error: 'This card has no transfer limit configured.' };
 
-    // Check if 30 days have passed since last reset
-    let transfersUsed: number = card.transfers_used ?? 0;
-    const lastReset: string | null = card.last_reset_date ?? null;
-    const now = new Date();
+    // Count ticks in the rolling 30-day window
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { count, error: countErr } = await supabase
+      .from('card_ticks')
+      .select('id', { count: 'exact', head: true })
+      .eq('card_id', cardId)
+      .gte('ticked_at', thirtyDaysAgo);
 
-    const shouldReset = !lastReset || (now.getTime() - new Date(lastReset).getTime()) >= 30 * 24 * 60 * 60 * 1000;
-    if (shouldReset) {
-      transfersUsed = 0;
+    if (countErr) return { error: countErr.message };
+
+    const activeTicks = count ?? 0;
+    if (activeTicks >= maxTransfers) {
+      return { error: 'Rolling 30-day transfer limit reached. A slot will free up when an older tick expires.' };
     }
 
-    // Check limit
-    if (transfersUsed >= maxTransfers) {
-      return { error: '30-day transfer limit reached. Cannot add more transfers until the cycle resets.' };
-    }
+    // Insert a new tick
+    const { data: newTick, error: insertErr } = await supabase
+      .from('card_ticks')
+      .insert({ card_id: cardId, ticked_at: new Date().toISOString() })
+      .select()
+      .single();
 
-    const newCount = transfersUsed + 1;
-
-    const updatePayload: Record<string, unknown> = { transfers_used: newCount };
-    if (shouldReset) {
-      updatePayload.last_reset_date = now.toISOString();
-    }
-
-    const { error: updateErr } = await supabase
-      .from('cards')
-      .update(updatePayload)
-      .eq('id', cardId);
-
-    if (updateErr) return { error: updateErr.message };
+    if (insertErr || !newTick) return { error: insertErr?.message || 'Failed to record tick' };
 
     revalidatePath('/');
-    return { success: true, transfers_used: newCount };
+    return { success: true, tick: { id: newTick.id, ticked_at: newTick.ticked_at } };
   } catch (err: any) {
     return { error: err.message || 'Failed to tick transfer counter' };
   }
 }
 
-export async function resetCardCounter(cardId: string): Promise<{ success?: boolean; error?: string }> {
+export async function deleteCardTick(tickId: string): Promise<{ success?: boolean; error?: string }> {
   try {
-    if (!cardId) return { error: 'Card ID is required' };
+    if (!tickId) return { error: 'Tick ID is required' };
 
     const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase
+      .from('card_ticks')
+      .delete()
+      .eq('id', tickId);
 
-    const { error: updateErr } = await supabase
-      .from('cards')
-      .update({
-        transfers_used: 0,
-        last_reset_date: new Date().toISOString(),
-      })
-      .eq('id', cardId);
-
-    if (updateErr) return { error: updateErr.message };
+    if (deleteErr) return { error: deleteErr.message };
 
     revalidatePath('/');
     return { success: true };
   } catch (err: any) {
-    return { error: err.message || 'Failed to reset counter' };
+    return { error: err.message || 'Failed to delete tick' };
   }
 }
+
+export async function resetCardTicks(cardId: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    if (!cardId) return { error: 'Card ID is required' };
+
+    const supabase = createAdminClient();
+    const { error: deleteErr } = await supabase
+      .from('card_ticks')
+      .delete()
+      .eq('card_id', cardId);
+
+    if (deleteErr) return { error: deleteErr.message };
+
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to reset ticks' };
+  }
+}
+
+/** @deprecated Legacy counter — kept for backward compatibility; new code uses card_ticks. */
+export async function resetCardCounter(cardId: string): Promise<{ success?: boolean; error?: string }> {
+  return resetCardTicks(cardId);
+}
+
 
 export async function issueLoan(formData: FormData) {
   try {

@@ -1,35 +1,80 @@
 'use client'
 import React, { useState } from 'react';
-import { addTransaction, createCard, updateCard, deleteCard, toggleCardStatus, tickCardTransfer, resetCardCounter } from '@/app/actions';
+import {
+  addTransaction,
+  createCard,
+  updateCard,
+  deleteCard,
+  toggleCardStatus,
+  tickCardTransfer,
+  deleteCardTick,
+  resetCardTicks,
+} from '@/app/actions';
 import { formatCurrency } from '@/lib/format';
+import { CardTick } from '@/types/database';
 
-// ─── Helper: days remaining in 30-day cycle ───────────────────────────────────
-function getDaysRemaining(lastResetDate: string | null | undefined): number | null {
-  if (!lastResetDate) return null;
-  const resetTime = new Date(lastResetDate).getTime();
-  const now = Date.now();
-  const elapsed = now - resetTime;
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  const remaining = Math.max(0, Math.ceil((thirtyDays - elapsed) / (24 * 60 * 60 * 1000)));
-  return remaining;
+// ─── Helper: rolling 30-day window ───────────────────────────────────────────
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+function getActiveTicks(ticks: CardTick[], cardId: string): CardTick[] {
+  const cutoff = Date.now() - THIRTY_DAYS_MS;
+  return ticks.filter(
+    t => t.card_id === cardId && new Date(t.ticked_at).getTime() >= cutoff
+  );
+}
+
+/** Returns how many days until the oldest active tick expires (frees up a slot). */
+function getDaysUntilNextSlot(activeTicks: CardTick[]): number | null {
+  if (activeTicks.length === 0) return null;
+  const oldest = activeTicks.reduce((a, b) =>
+    new Date(a.ticked_at) < new Date(b.ticked_at) ? a : b
+  );
+  const expiresAt = new Date(oldest.ticked_at).getTime() + THIRTY_DAYS_MS;
+  const msLeft = expiresAt - Date.now();
+  return Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+}
+
+function formatTickDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // ─── Sub-component: Transfer Counter Badge ────────────────────────────────────
 function TransferCounterBadge({
   card,
+  activeTicks,
   onTick,
+  onDeleteTick,
   onReset,
+  isTickingThis,
 }: {
   card: any;
+  activeTicks: CardTick[];
   onTick: () => void;
+  onDeleteTick: (tickId: string) => void;
   onReset: () => void;
+  isTickingThis: boolean;
 }) {
+  const [showTicks, setShowTicks] = useState(false);
   const maxTransfers: number | null = card.max_transfers ?? null;
   if (maxTransfers === null) return null;
 
-  const used: number = card.transfers_used ?? 0;
-  const isLimitReached = used >= maxTransfers;
-  const daysRemaining = getDaysRemaining(card.last_reset_date);
+  const activeCount = activeTicks.length;
+  const isLimitReached = activeCount >= maxTransfers;
+  const daysUntilSlot = getDaysUntilNextSlot(activeTicks);
+
+  // Find expiry date of oldest active tick for user-friendly messaging
+  const oldestTick = activeTicks.length > 0
+    ? activeTicks.reduce((a, b) => new Date(a.ticked_at) < new Date(b.ticked_at) ? a : b)
+    : null;
+  const nextSlotDate = oldestTick
+    ? new Date(new Date(oldestTick.ticked_at).getTime() + THIRTY_DAYS_MS)
+    : null;
 
   return (
     <div className="mt-3 pt-3 border-t border-slate-100">
@@ -40,51 +85,114 @@ function TransferCounterBadge({
             className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${
               isLimitReached
                 ? 'bg-red-100 text-red-700 border border-red-200'
-                : used >= maxTransfers * 0.8
+                : activeCount >= maxTransfers * 0.8
                 ? 'bg-amber-100 text-amber-700 border border-amber-200'
                 : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
             }`}
           >
             <span>🔄</span>
-            <span>{used} / {maxTransfers} Transfers Used</span>
+            <span>{activeCount} / {maxTransfers} Transfers Used</span>
           </span>
         </div>
 
-        {/* Reset button */}
-        <button
-          onClick={onReset}
-          title="Reset counter to 0"
-          className="text-slate-400 hover:text-indigo-600 p-1 rounded-lg transition-colors cursor-pointer"
-        >
-          {/* Refresh icon */}
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Expand tick list */}
+          {activeTicks.length > 0 && (
+            <button
+              onClick={() => setShowTicks(v => !v)}
+              title={showTicks ? 'Hide tick log' : 'Show tick log'}
+              className="text-slate-400 hover:text-indigo-600 p-1 rounded-lg transition-colors cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                {showTicks
+                  ? <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                }
+              </svg>
+            </button>
+          )}
+
+          {/* Reset button */}
+          <button
+            onClick={onReset}
+            title="Clear all tick logs for this card"
+            className="text-slate-400 hover:text-red-500 p-1 rounded-lg transition-colors cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Reset cycle info */}
-      {daysRemaining !== null && (
+      {/* Expandable tick log */}
+      {showTicks && activeTicks.length > 0 && (
+        <div className="mb-2 bg-slate-50 border border-slate-100 rounded-xl overflow-hidden">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-3 pt-2 pb-1">
+            Active Ticks (rolling 30 days)
+          </p>
+          <ul className="divide-y divide-slate-100">
+            {[...activeTicks]
+              .sort((a, b) => new Date(a.ticked_at).getTime() - new Date(b.ticked_at).getTime())
+              .map((tick, i) => {
+                const expiresAt = new Date(new Date(tick.ticked_at).getTime() + THIRTY_DAYS_MS);
+                const daysLeft = Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+                return (
+                  <li key={tick.id} className="flex items-center justify-between px-3 py-1.5">
+                    <div>
+                      <p className="text-[11px] font-medium text-slate-700">
+                        #{i + 1} — {formatTickDate(tick.ticked_at)}
+                      </p>
+                      <p className="text-[10px] text-slate-400">Expires in {daysLeft} day{daysLeft !== 1 ? 's' : ''}</p>
+                    </div>
+                    <button
+                      onClick={() => onDeleteTick(tick.id)}
+                      title="Undo this tick"
+                      className="text-slate-300 hover:text-red-500 p-1 rounded transition-colors cursor-pointer"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-3.5 h-3.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </li>
+                );
+              })}
+          </ul>
+        </div>
+      )}
+
+      {/* Next slot countdown */}
+      {isLimitReached && nextSlotDate && daysUntilSlot !== null && (
+        <p className="text-[10px] text-slate-500 mb-2">
+          Next slot opens in{' '}
+          <span className="font-semibold text-indigo-600">{daysUntilSlot} day{daysUntilSlot !== 1 ? 's' : ''}</span>
+          {' '}(
+          {nextSlotDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          )
+        </p>
+      )}
+      {!isLimitReached && activeCount > 0 && nextSlotDate && daysUntilSlot !== null && (
         <p className="text-[10px] text-slate-400 mb-2">
-          {daysRemaining === 0
-            ? 'Resets today (30-day cycle)'
-            : `Resets in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`}
+          Oldest slot frees up in {daysUntilSlot} day{daysUntilSlot !== 1 ? 's' : ''} (
+          {nextSlotDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          )
         </p>
       )}
 
-      {/* Limit reached warning */}
+      {/* Limit reached warning OR tick button */}
       {isLimitReached ? (
         <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-3 py-2 rounded-lg">
           <span>🚫</span>
-          <span>30-Day Limit Reached</span>
+          <span>Rolling 30-Day Limit Reached</span>
         </div>
       ) : (
         <button
           onClick={onTick}
-          className="w-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          disabled={isTickingThis}
+          className="w-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white py-2 rounded-lg transition-colors cursor-pointer disabled:cursor-wait flex items-center justify-center gap-1.5"
         >
           <span>＋</span>
-          <span>Tick Transfer</span>
+          <span>{isTickingThis ? 'Recording…' : 'Tick Transfer'}</span>
         </button>
       )}
     </div>
@@ -92,7 +200,15 @@ function TransferCounterBadge({
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function CardsOverview({ cards, cardholders }: { cards: any[], cardholders: any[] }) {
+export default function CardsOverview({
+  cards,
+  cardholders,
+  cardTicks = [],
+}: {
+  cards: any[];
+  cardholders: any[];
+  cardTicks?: CardTick[];
+}) {
   const [showTopupModal, setShowTopupModal] = useState<string | null>(null);
   const [showCreateCardModal, setShowCreateCardModal] = useState(false);
   const [editingCard, setEditingCard] = useState<any | null>(null);
@@ -100,6 +216,9 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [tickingCardId, setTickingCardId] = useState<string | null>(null);
   const [tickError, setTickError] = useState<Record<string, string>>({});
+
+  // Local optimistic tick store — starts from SSR data, mutations append/remove
+  const [localTicks, setLocalTicks] = useState<CardTick[]>(cardTicks);
 
   const handleCreateCard = async (formData: FormData) => {
     setErrorMsg(null);
@@ -158,15 +277,37 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
     const res = await tickCardTransfer(cardId);
     if (res?.error) {
       setTickError(prev => ({ ...prev, [cardId]: res.error! }));
+    } else if (res?.tick) {
+      // Optimistic: add the returned tick to local state
+      setLocalTicks(prev => [...prev, { id: res.tick!.id, card_id: cardId, ticked_at: res.tick!.ticked_at }]);
     }
     setTickingCardId(null);
   };
 
-  const handleResetCounter = async (cardId: string) => {
+  const handleDeleteTick = async (tickId: string, cardId: string) => {
+    // Optimistic removal
+    setLocalTicks(prev => prev.filter(t => t.id !== tickId));
     setTickError(prev => ({ ...prev, [cardId]: '' }));
-    const res = await resetCardCounter(cardId);
+    const res = await deleteCardTick(tickId);
+    if (res?.error) {
+      // Revert
+      setTickError(prev => ({ ...prev, [cardId]: res.error! }));
+      setLocalTicks(prev => {
+        const original = cardTicks.find(t => t.id === tickId);
+        return original ? [...prev, original] : prev;
+      });
+    }
+  };
+
+  const handleResetTicks = async (cardId: string) => {
+    setTickError(prev => ({ ...prev, [cardId]: '' }));
+    // Optimistic removal
+    const removed = localTicks.filter(t => t.card_id === cardId);
+    setLocalTicks(prev => prev.filter(t => t.card_id !== cardId));
+    const res = await resetCardTicks(cardId);
     if (res?.error) {
       setTickError(prev => ({ ...prev, [cardId]: res.error! }));
+      setLocalTicks(prev => [...prev, ...removed]);
     }
   };
 
@@ -224,7 +365,7 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Max Transfers (30-Day Limit) <span className="text-slate-400 font-normal">— optional</span>
+                  Max Transfers (Rolling 30-Day Limit) <span className="text-slate-400 font-normal">— optional</span>
                 </label>
                 <input
                   type="number"
@@ -304,7 +445,7 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Max Transfers (30-Day Limit) <span className="text-slate-400 font-normal">— optional</span>
+                  Max Transfers (Rolling 30-Day Limit) <span className="text-slate-400 font-normal">— optional</span>
                 </label>
                 <input
                   type="number"
@@ -357,7 +498,8 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
           const cardCurrency = card.currency || 'USD';
           const isActive = card.is_active !== false;
           const cardTickError = tickError[card.id] || '';
-          const isTicking = tickingCardId === card.id;
+          const isTickingThis = tickingCardId === card.id;
+          const activeTicks = getActiveTicks(localTicks, card.id);
 
           return (
             <div
@@ -421,15 +563,14 @@ export default function CardsOverview({ cards, cardholders }: { cards: any[], ca
               {/* Transfer Counter Section */}
               {card.max_transfers != null && isActive && (
                 <>
-                  {isTicking ? (
-                    <div className="mt-3 pt-3 border-t border-slate-100 text-center text-xs text-slate-400 py-2">Updating…</div>
-                  ) : (
-                    <TransferCounterBadge
-                      card={card}
-                      onTick={() => handleTickTransfer(card.id)}
-                      onReset={() => handleResetCounter(card.id)}
-                    />
-                  )}
+                  <TransferCounterBadge
+                    card={card}
+                    activeTicks={activeTicks}
+                    onTick={() => handleTickTransfer(card.id)}
+                    onDeleteTick={(tickId) => handleDeleteTick(tickId, card.id)}
+                    onReset={() => handleResetTicks(card.id)}
+                    isTickingThis={isTickingThis}
+                  />
                   {cardTickError && (
                     <p className="text-xs text-red-600 mt-1.5 font-medium">{cardTickError}</p>
                   )}
